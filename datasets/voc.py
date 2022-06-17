@@ -88,11 +88,6 @@ class VOCSegmentation(data.Dataset):
                  image_set='train',
                  download=False,
                  transform=None):
-
-        is_aug=False
-        if year=='2012_aug':
-            is_aug = True
-            year = '2012'
         
         self.root = os.path.expanduser(root)
         self.year = year
@@ -104,7 +99,6 @@ class VOCSegmentation(data.Dataset):
         self.image_set = image_set
         base_dir = DATASET_YEAR_DICT[year]['base_dir']
         voc_root = os.path.join(self.root, base_dir)
-        image_dir = os.path.join(voc_root, 'JPEGImages')
 
         if download:
             download_extract(self.url, self.root, self.filename, self.md5)
@@ -113,23 +107,13 @@ class VOCSegmentation(data.Dataset):
             raise RuntimeError('Dataset not found or corrupted.' +
                                ' You can use download=True to download it')
         
-        if is_aug and image_set=='train':
-            mask_dir = os.path.join(voc_root, 'SegmentationClassAug')
-            assert os.path.exists(mask_dir), "SegmentationClassAug not found, please refer to README.md and prepare it manually"
-            split_f = os.path.join( self.root, 'train_aug.txt')#'./datasets/data/train_aug.txt'
-        else:
+        if image_set=='val':
+            image_dir = os.path.join(voc_root, 'JPEGImages')
             mask_dir = os.path.join(voc_root, 'SegmentationClass')
-            splits_dir = os.path.join(voc_root, 'ImageSets/Segmentation')
-            split_f = os.path.join(splits_dir, image_set.rstrip('\n') + '.txt')
-
-        if not os.path.exists(split_f):
-            raise ValueError(
-                'Wrong image_set entered! Please use image_set="train" '
-                'or image_set="trainval" or image_set="val"')
-
-        with open(os.path.join(split_f), "r") as f:
-            file_names = [x.strip() for x in f.readlines()]
-        
+        else:
+            image_dir = os.path.join(voc_root, 'JPEGImagesAug')
+            mask_dir = os.path.join(voc_root, 'SegmentationClassAug')
+        file_names = [f.split('.')[0] for f in os.listdir(image_dir)]
         self.images = [os.path.join(image_dir, x + ".jpg") for x in file_names]
         self.masks = [os.path.join(mask_dir, x + ".png") for x in file_names]
         assert (len(self.images) == len(self.masks))
@@ -142,6 +126,7 @@ class VOCSegmentation(data.Dataset):
             tuple: (image, target) where target is the image segmentation.
         """
         img = Image.open(self.images[index]).convert('RGB')
+        
         target = Image.open(self.masks[index])
         if self.transform is not None:
             img, target = self.transform(img, target)

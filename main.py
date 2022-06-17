@@ -28,7 +28,7 @@ def get_argparser():
                         help="path to Dataset")
     parser.add_argument("--dataset", type=str, default='voc',
                         choices=['voc', 'cityscapes'], help='Name of dataset')
-    parser.add_argument("--num_classes", type=int, default=None,
+    parser.add_argument("--num_classes", type=int, default=5,
                         help="num classes (default: None)")
 
     # Deeplab Options
@@ -36,32 +36,32 @@ def get_argparser():
                               not (name.startswith("__") or name.startswith('_')) and callable(
                               network.modeling.__dict__[name])
                               )
-    parser.add_argument("--model", type=str, default='deeplabv3plus_mobilenet',
+    parser.add_argument("--model", type=str, default='deeplabv3plus_resnet101',
                         choices=available_models, help='model name')
     parser.add_argument("--separable_conv", action='store_true', default=False,
                         help="apply separable conv to decoder and aspp")
-    parser.add_argument("--output_stride", type=int, default=16, choices=[8, 16])
+    parser.add_argument("--output_stride", type=int, default=8, choices=[8, 16])
 
     # Train Options
     parser.add_argument("--test_only", action='store_true', default=False)
     parser.add_argument("--save_val_results", action='store_true', default=False,
                         help="save segmentation results to \"./results\"")
-    parser.add_argument("--total_itrs", type=int, default=30e3,
+    parser.add_argument("--total_itrs", type=int, default=100000,
                         help="epoch number (default: 30k)")
     parser.add_argument("--lr", type=float, default=0.01,
                         help="learning rate (default: 0.01)")
     parser.add_argument("--lr_policy", type=str, default='poly', choices=['poly', 'step'],
                         help="learning rate scheduler policy")
-    parser.add_argument("--step_size", type=int, default=10000)
+    parser.add_argument("--step_size", type=int, default=100)
     parser.add_argument("--crop_val", action='store_true', default=False,
                         help='crop validation (default: False)')
-    parser.add_argument("--batch_size", type=int, default=16,
+    parser.add_argument("--batch_size", type=int, default=8,
                         help='batch size (default: 16)')
     parser.add_argument("--val_batch_size", type=int, default=4,
                         help='batch size for validation (default: 4)')
-    parser.add_argument("--crop_size", type=int, default=513)
+    parser.add_argument("--crop_size", type=int, default=256)
 
-    parser.add_argument("--ckpt", default=None, type=str,
+    parser.add_argument("--ckpt", default='./checkpoints/best_deeplabv3p_resnet101_voc_os8.pth', type=str,
                         help="restore from checkpoint")
     parser.add_argument("--continue_training", action='store_true', default=False)
 
@@ -85,9 +85,9 @@ def get_argparser():
                         choices=['2012_aug', '2012', '2011', '2009', '2008', '2007'], help='year of VOC')
 
     # Visdom options
-    parser.add_argument("--enable_vis", action='store_true', default=False,
+    parser.add_argument("--enable_vis", action='store_true', default=True,
                         help="use visdom for visualization")
-    parser.add_argument("--vis_port", type=str, default='13570',
+    parser.add_argument("--vis_port", type=str, default='8097',
                         help='port for visdom')
     parser.add_argument("--vis_env", type=str, default='main',
                         help='env for visdom')
@@ -211,7 +211,7 @@ def validate(opts, model, loader, device, metrics, ret_samples_ids=None):
 def main():
     opts = get_argparser().parse_args()
     if opts.dataset.lower() == 'voc':
-        opts.num_classes = 21
+        opts.num_classes = 5
     elif opts.dataset.lower() == 'cityscapes':
         opts.num_classes = 19
 
@@ -332,6 +332,7 @@ def main():
 
             optimizer.zero_grad()
             outputs = model(images)
+            # print(f"IMAGE: {outputs.shape}, LABEL: {labels.shape}")
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()

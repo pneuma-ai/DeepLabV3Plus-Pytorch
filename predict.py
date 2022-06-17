@@ -1,4 +1,5 @@
 from torch.utils.data import dataset
+import torch.nn.functional as F
 from tqdm import tqdm
 import network
 import utils
@@ -6,6 +7,7 @@ import os
 import random
 import argparse
 import numpy as np
+import pandas as pd
 
 from torch.utils import data
 from datasets import VOCSegmentation, Cityscapes, cityscapes
@@ -24,7 +26,7 @@ def get_argparser():
     parser = argparse.ArgumentParser()
 
     # Datset Options
-    parser.add_argument("--input", type=str, required=True,
+    parser.add_argument("--input", type=str, default='datasets/sample/train/labeled_images',
                         help="path to a single image or image directory")
     parser.add_argument("--dataset", type=str, default='voc',
                         choices=['voc', 'cityscapes'], help='Name of training set')
@@ -35,14 +37,14 @@ def get_argparser():
                               network.modeling.__dict__[name])
                               )
 
-    parser.add_argument("--model", type=str, default='deeplabv3plus_mobilenet',
+    parser.add_argument("--model", type=str, default='deeplabv3plus_resnet101',
                         choices=available_models, help='model name')
     parser.add_argument("--separable_conv", action='store_true', default=False,
                         help="apply separable conv to decoder and aspp")
     parser.add_argument("--output_stride", type=int, default=16, choices=[8, 16])
 
     # Train Options
-    parser.add_argument("--save_val_results_to", default=None,
+    parser.add_argument("--save_val_results_to", default='test_results',
                         help="save segmentation results to the specified dir")
 
     parser.add_argument("--crop_val", action='store_true', default=False,
@@ -52,16 +54,35 @@ def get_argparser():
     parser.add_argument("--crop_size", type=int, default=513)
 
     
-    parser.add_argument("--ckpt", default=None, type=str,
+    parser.add_argument("--ckpt", type=str, default='checkpoints/deeplabv3p_resnet101_voc_os16.pth',
                         help="resume from checkpoint")
     parser.add_argument("--gpu_id", type=str, default='0',
                         help="GPU ID")
     return parser
 
+
+def mask_to_coordinates(mask):
+    flatten_mask = mask.flatten()
+    if flatten_mask.max() == 0:
+        return f'0 {len(flatten_mask)}'
+    idx = np.where(flatten_mask!=0)[0]
+    steps = idx[1:]-idx[:-1]
+    new_coord = []
+    step_idx = np.where(np.array(steps)!=1)[0]
+    start = np.append(idx[0], idx[step_idx+1])
+    end = np.append(idx[step_idx], idx[-1])
+    length = end - start + 1
+    for i in range(len(start)):
+        new_coord.append(start[i])
+        new_coord.append(length[i])
+    new_coord_str = ' '.join(map(str, new_coord))
+    return new_coord_str
+
+
 def main():
     opts = get_argparser().parse_args()
     if opts.dataset.lower() == 'voc':
-        opts.num_classes = 21
+        opts.num_classes = 5
         decode_fn = VOCSegmentation.decode_target
     elif opts.dataset.lower() == 'cityscapes':
         opts.num_classes = 19
@@ -118,20 +139,42 @@ def main():
             ])
     if opts.save_val_results_to is not None:
         os.makedirs(opts.save_val_results_to, exist_ok=True)
+
+
+    # Predict 진행
+    sample_submission_df = pd.read_csv(os.path.join('sample_submission.csv'))
+    class_map = {0:'ship', 1:'container_truck', 2:'forklift', 3:'reach_stacker'}
+    file_names = []
+    classes = []
+    predictions = []
+
     with torch.no_grad():
         model = model.eval()
         for img_path in tqdm(image_files):
             ext = os.path.basename(img_path).split('.')[-1]
             img_name = os.path.basename(img_path)[:-len(ext)-1]
             img = Image.open(img_path).convert('RGB')
+            img_size = img.size
             img = transform(img).unsqueeze(0) # To tensor of NCHW
             img = img.to(device)
             
             pred = model(img).max(1)[1].cpu().numpy()[0] # HW
+            pred_u_large_raw = F.interpolate(pred, size=img_size[0].tolist(), mode='bilinear', align_corners=True)
+            class_num = pred_u_large_raw[0].sum(dim=(1,2))[1:].argmax().item()
+            class_of_image = class_map[class_num]
+            class_mask = (pred_u_large_raw[0][class_num + 1] -  pred_u_large_raw[0][0] > 0).int().cpu().numpy()
+            coverted_coordinate = mask_to_coordinates(class_mask)
+            file_names.append(img_name)
+            classes.append(class_of_image)
+            predictions.append(coverted_coordinate)
             colorized_preds = decode_fn(pred).astype('uint8')
             colorized_preds = Image.fromarray(colorized_preds)
             if opts.save_val_results_to:
                 colorized_preds.save(os.path.join(opts.save_val_results_to, img_name+'.png'))
+
+        submission_df = pd.DataFrame({'file_name':file_names, 'class':classes, 'prediction':predictions})
+        submission_df = pd.merge(sample_submission_df['file_name'], submission_df, left_on='file_name', right_on='file_name', how='left')
+        submission_df.to_csv(opts.save_val_results_to, index=False, encoding='utf-8')
 
 if __name__ == '__main__':
     main()

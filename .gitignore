@@ -1,11 +1,4 @@
+/checkpoints
+/datasets/data
 __pycache__
-VOCdevkit
-checkpoints
-.vscode
-*.pyc
-.idea/
-__pycache__
-results
-checkpoints_bak
-cityscapes
-test_results
+/test_results
