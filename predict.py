@@ -54,7 +54,7 @@ def get_argparser():
     parser.add_argument("--crop_size", type=int, default=513)
 
     
-    parser.add_argument("--ckpt", type=str, default='checkpoints/deeplabv3p_resnet101_voc_os16.pth',
+    parser.add_argument("--ckpt", type=str, default='checkpoints/best_deeplabv3p_resnet101_voc_os8.pth',
                         help="resume from checkpoint")
     parser.add_argument("--gpu_id", type=str, default='0',
                         help="GPU ID")
@@ -147,6 +147,7 @@ def main():
     file_names = []
     classes = []
     predictions = []
+    # t = T.ToTensor()
 
     with torch.no_grad():
         model = model.eval()
@@ -154,27 +155,32 @@ def main():
             ext = os.path.basename(img_path).split('.')[-1]
             img_name = os.path.basename(img_path)[:-len(ext)-1]
             img = Image.open(img_path).convert('RGB')
-            img_size = img.size
+            img_size = torch.tensor(img.size)
             img = transform(img).unsqueeze(0) # To tensor of NCHW
             img = img.to(device)
+            # print(type(img), ":", img)
+            # print(type(img_size), ":", img_size)
             
             pred = model(img).max(1)[1].cpu().numpy()[0] # HW
-            pred_u_large_raw = F.interpolate(pred, size=img_size[0].tolist(), mode='bilinear', align_corners=True)
-            class_num = pred_u_large_raw[0].sum(dim=(1,2))[1:].argmax().item()
-            class_of_image = class_map[class_num]
-            class_mask = (pred_u_large_raw[0][class_num + 1] -  pred_u_large_raw[0][0] > 0).int().cpu().numpy()
-            coverted_coordinate = mask_to_coordinates(class_mask)
-            file_names.append(img_name)
-            classes.append(class_of_image)
-            predictions.append(coverted_coordinate)
+            # pred_ = torch.from_numpy(pred)
+            # print(type(pred_), ":", pred_, pred_.dim())
+            # print(img_size.tolist())
+            # pred_u_large_raw = F.interpolate(pred_, size=img_size.tolist(), mode='bilinear', align_corners=True)
+            # class_num = pred_u_large_raw[0].sum(dim=(1,2))[1:].argmax().item()
+            # class_of_image = class_map[class_num]
+            # class_mask = (pred_u_large_raw[0][class_num + 1] -  pred_u_large_raw[0][0] > 0).int().cpu().numpy()
+            # coverted_coordinate = mask_to_coordinates(class_mask)
+            # file_names.append(img_name)
+            # classes.append(class_of_image)
+            # predictions.append(coverted_coordinate)
             colorized_preds = decode_fn(pred).astype('uint8')
             colorized_preds = Image.fromarray(colorized_preds)
             if opts.save_val_results_to:
                 colorized_preds.save(os.path.join(opts.save_val_results_to, img_name+'.png'))
 
-        submission_df = pd.DataFrame({'file_name':file_names, 'class':classes, 'prediction':predictions})
-        submission_df = pd.merge(sample_submission_df['file_name'], submission_df, left_on='file_name', right_on='file_name', how='left')
-        submission_df.to_csv(opts.save_val_results_to, index=False, encoding='utf-8')
+        # submission_df = pd.DataFrame({'file_name':file_names, 'class':classes, 'prediction':predictions})
+        # submission_df = pd.merge(sample_submission_df['file_name'], submission_df, left_on='file_name', right_on='file_name', how='left')
+        # submission_df.to_csv(opts.save_val_results_to, index=False, encoding='utf-8')
 
 if __name__ == '__main__':
     main()

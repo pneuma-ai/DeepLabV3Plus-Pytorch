@@ -61,7 +61,7 @@ def get_argparser():
                         help='batch size for validation (default: 4)')
     parser.add_argument("--crop_size", type=int, default=256)
 
-    parser.add_argument("--ckpt", default='./checkpoints/best_deeplabv3p_resnet101_voc_os8.pth', type=str,
+    parser.add_argument("--ckpt", type=str,
                         help="restore from checkpoint")
     parser.add_argument("--continue_training", action='store_true', default=False)
 
